@@ -1,7 +1,18 @@
 #include "dinputproxy.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <windows.h>
 
 #define PDID(self) ((proxy_IDirectInputDevice *)(self))
 #define REAL(self) (PDID(self)->did)
+
+typedef struct {
+    int heldframes;
+    bool shooting;
+    bool charging;
+} State;
+
+State gamestate = { 0, false, false };
 
 HRESULT STDMETHODCALLTYPE proxy_IDirectInputDevice_GetDeviceData(IDirectInputDevice8A *self, DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags)
 {
@@ -87,7 +98,29 @@ HRESULT STDMETHODCALLTYPE proxy_IDirectInputDevice_Unacquire(IDirectInputDevice8
 HRESULT STDMETHODCALLTYPE proxy_IDirectInputDevice_GetDeviceState(IDirectInputDevice8A *self, DWORD cbData, LPVOID lpvData)
 {
 	HRESULT hr = REAL(self)->lpVtbl->GetDeviceState(REAL(self), cbData, lpvData);
-	// does stuff here
+
+	if (SUCCEEDED(hr) && cbData == 256 && lpvData != NULL) {
+		BYTE* keys = (BYTE*)lpvData;
+
+		bool zDown = (keys[DIK_Z] & 0x80) != 0;
+		bool xDown = (keys[DIK_X] & 0x80) != 0;
+		bool cDown = (keys[DIK_C] & 0x80) != 0;
+
+		gamestate.charging = xDown;
+		gamestate.shooting = zDown && !xDown;
+
+		gamestate.heldframes = (gamestate.shooting) ? ++gamestate.heldframes : 0;
+
+		if ((gamestate.heldframes % 2) != 0) {
+			keys[DIK_Z] = 0x00;
+		}
+
+		keys[DIK_X] = 0x00; // adding this makes it work flawlessly for touhou 9. happy little accident.
+
+		if (cDown) {
+			keys[DIK_X] = 0x80;
+		}
+	}
 	return hr;
 }
 
